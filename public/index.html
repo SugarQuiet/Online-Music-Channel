@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+
+<html>
+	<head>
+		<meta charset = "utf-8">
+		<title>Online-Music-Channel</title>
+		<link rel="stylesheet" href="https://www.w3schools.com/w3css/4/w3.css">
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+
+		<link rel="stylesheet" type = "text/css" href = "login.css">
+		<link rel="stylesheet" type = "text/css" href = "sidebar2.css">    <!--改-->
+		<link rel="stylesheet" type = "text/css" href = "backgroundpic.css"> 
+		<style type = "text/css">  
+			#header {
+			    padding: 21px 0;
+				height: 10%;
+			    width: 100%;
+			    display: flex;
+			    position: fixed;
+			    align-items: center;
+			    justify-content: center;
+			    color: saddlebrown;
+			    top: 5px;
+			}
+			#header-right {
+				padding: 0 0;
+				height: 10%;
+				margin-left: -25%;
+			}
+			body {
+				font-family: Microsoft JhengHei;
+				color: saddlebrown;
+			}
+			.main {
+				float: left;
+				font-size: 18px;
+				width: 40%;
+				height: 100%;
+				overflow: hidden;
+				padding-left: 200px;
+			}
+			.list {
+				float: left;
+				width: 45%;
+				height: 100%;
+				overflow: hidden;
+				padding-left: 30px;
+			}
+			th {
+				color: black;
+				font-size: 18px;
+			}
+			td {
+				font-size: 18px;
+			}
+			#header-right {
+				margin-left: 15%;
+			}
+		</style>
+		<script src="https://code.jquery.com/jquery-1.10.2.js"></script>
+		<script type="text/javascript" src="login.js"></script> 
+		<script type="text/javascript">
+			var tag = document.createElement('script');
+			tag.src = "https://www.youtube.com/player_api";
+			var firstScriptTag = document.getElementsByTagName('script')[0];
+			firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+			var song, songrequest, loadInfo, player, songlistIndex, pause;
+			var songsJson, songsData;
+			var firstLoadData, isLoggedIn; //load form server when user first load
+			var reload; //auto sync seconds with server and enable player to reload
+			var nowVideoId;
+			function start()
+			{
+				song = document.getElementById("songtext");
+				songrequest = document.getElementById("songRequest");
+				songrequest.addEventListener("click", onRequestSongClicked, false);
+				songlistIndex = 0;
+				pause = document.getElementById("Pause");
+				pause.addEventListener("click", onPauseClicked, false);
+				videoPause = false;
+				isLoggedIn = false;
+				firstLoadData = true;
+				reload = true;
+				loadSongs();
+				setTimeout( autoLogin , 250);
+			}
+
+			function autoLogin(){
+				if(!localStorage.getItem("autologin"))
+					return;
+				data = JSON.parse(localStorage.getItem("autologin"));
+				console.log("自動登入帳號：" + data.id);
+				if(data.password){
+					$.ajax({
+						type: 'POST',
+						url: '/login',
+						data: data,
+	                    dataType: "json",
+	                    success: function(result){
+	                    	console.log("登入回傳結果：" + result);
+	                    	if(result != "false"){
+	                    		isLoggedIn = true;
+	                    		id = data.id;
+	                    		name = result.name;
+	                    	}
+	                    },
+						failure: function(errMsg) {
+							alert(errMsg);
+						}
+	                });
+				}	
+			}
+			
+			var id, password, name;
+
+			function onYouTubeIframeAPIReady() {
+				player = new YT.Player('ytplayer', {
+					videoId: 'jI-kpVh6e1U',
+					width: 400,
+					height: 225,
+					playerVars: { 
+						'autoplay': 1,
+						'cc_load_policy': 0,
+						'controls': 2,
+						'disablekb': 1,
+						'fs': 0,
+						'iv_load_policy': 3,
+						'rel': 0,
+						'showinfo': 0	
+						},
+					events: {
+						'onReady': onPlayerReady,
+						'onStateChange': onPlayerStateChange,
+						'onError': onErrorOccur
+					}
+				});
+			}
+
+			var retry = 0, constTitle; //關鍵字不要跑掉 (每次以標題去搜尋，會越來越歪)
+			//不能點的歌曲狀態 >> 版權問題
+			function onErrorOccur(event){
+				if(retry == 0)
+					constTitle = title;
+				retry++;
+				if(event.data == 101 || event.data == 150)
+				{
+					console.log(constTitle + "有版權問題，重新載入：" + retry);
+					loadInfo = 1;
+					keyWordSearch(constTitle, 1, retry + 1);	
+				}
+			}
+
+			function onPlayerReady(event) {
+				loadInfo = 1;
+				event.target.setVolume(50);
+				event.target.playVideo();
+			}
+			
+			function onPlayerStateChange(event) {
+				if(loadInfo == 1) {
+					getYouTubeData();
+					loadInfo = 0;
+				}
+				if(event.data == 0) {
+					loadSongs();
+					loadInfo = 1;
+					retry = 0;
+					reload = true;
+					var data = {};
+					data.msg = "00481007isHandsome!";
+					$.ajax({
+						type: 'POST',
+						url: '/now',
+						data: data,
+                        dataType: "json",
+                        success: function(result){
+                        	console.log(result);
+                        	player.loadVideoById(result.videoId, result.seconds);
+                        	setTimeout(function() {getYouTubeData(result.videoId);}, 500);
+                        },
+						failure: function(errMsg) {
+							alert(errMsg);
+						}
+               		});
+               		reload = false;
+				}
+				else if(event.data == 1 && reload) {
+					var data = {};
+					data.msg = "00481007isHandsome!";
+					$.ajax({
+						type: 'POST',
+						url: '/now',
+						data: data,
+                        dataType: "json",
+                        success: function(result){
+                        	console.log(result);
+                        	player.loadVideoById(result.videoId, result.seconds);
+                        	setTimeout(function() {getYouTubeData(result.videoId);}, 500);
+                        },
+						failure: function(errMsg) {
+							alert(errMsg);
+						}
+               		});
+               		reload = false;
+				}
+				else if(event.data == 2)
+					reload = true;
+			}
+			
+			function keyWordSearch(keyWord, action, result){
+				var YouTubeAPI = "https://www.googleapis.com/youtube/v3/search?";
+				$.getJSON( YouTubeAPI, {
+					q: keyWord,
+					type: "video",			
+					maxResults: result,
+					part: "snippet",
+					key: "AIzaSyAL7u3okSdLYEsmiSCioy6vcc7CPUbV2mo"
+				})
+				.done(function( data ) {
+					if(action == 0)
+						addSong(data.items[result - 1].id.videoId);
+					else{
+						loadInfo = 1;
+						player.loadVideoById(data.items[result - 1].id.videoId);
+					}
+				});
+			}
+			
+			function onRequestSongClicked(){
+				if(song.value == ""){
+					alert("請輸入YouTube網址或是關鍵字!!");
+					return;
+				}
+				var userInput = song.value;
+				var regExp = /^.*((youtu.be\/)|(v\/)|(\/u\/\w\/)|(embed\/)|(watch\?))\??v?=?([^#\&\?]*).*/;
+				var match = userInput.match(regExp);
+				var videoId;
+				if(match && match[7].length==11)
+				{
+					videoId = match[7];
+					addSong(videoId);
+				}
+				else
+				{
+					loadInfo = 1;
+					keyWordSearch(userInput, 0, 1);
+				}
+				song.value = "";
+			}
+
+			var title;
+			function getYouTubeData(){
+				var url = player.getVideoUrl();
+				console.log("現正播放：" + url);
+				var videoId = url.split('v=')[1];
+				nowVideoId = videoId;
+				var YouTubeAPI = "https://www.googleapis.com/youtube/v3/videos?";
+				$.getJSON( YouTubeAPI, {
+					id: videoId,
+					part: "snippet,contentDetails",
+					key: "AIzaSyAL7u3okSdLYEsmiSCioy6vcc7CPUbV2mo"
+				})
+				.done(function( data ) {
+					//console.log(data);
+					title = data.items["0"].snippet.title;
+					artist = data.items["0"].snippet.channelTitle;
+					duration = durationToSeconds(data.items["0"].contentDetails.duration, true);
+					document.getElementById("videoData").innerHTML = "<p>" + title + " - " + artist
+					+ "</p><p>連結: <a href ='https://www.youtube.com/watch?v=" + videoId + "' target = '_blank'>"
+					+ "https://www.youtube.com/watch?v=" + videoId
+					+ "</a></p><p>時間: " + duration + "</p>";
+				});
+			}
+			
+			//active = true, normal active = false, ajax to server
+			function durationToSeconds(duration, active) {
+				var match = duration.match(/PT(\d+H)?(\d+M)?(\d+S)?/);
+
+				var hours = (parseInt(match[1]) || 0);
+				var minutes = (parseInt(match[2]) || 0);
+				var seconds = (parseInt(match[3]) || 0);
+				if(active){
+					if(minutes < 10)
+						minutes = '0' + minutes;
+					if(seconds < 10)
+						seconds = '0' + seconds;
+					if(hours > 0)
+						return hours + ':' + minutes + ':' + seconds;
+					return minutes + ':' + seconds;
+				}
+				else
+					return hours * 3600 + minutes * 60 + seconds;
+			}
+			
+			function addSong(videoId) 
+			{
+				var song = {};
+				song.videoId = videoId;
+				var YouTubeAPI = "https://www.googleapis.com/youtube/v3/videos?";
+				$.getJSON( YouTubeAPI, {
+					id: videoId,
+					part: "snippet,contentDetails",
+					key: "AIzaSyAL7u3okSdLYEsmiSCioy6vcc7CPUbV2mo"
+				})
+				.done(function( data ) {
+					song.duration = durationToSeconds(data.items["0"].contentDetails.duration, false);
+					$.ajax({
+						type: 'POST',
+						url: '/sr',
+						data: song,
+	                    dataType: "json",
+	                    success: function(result){
+	                    	console.log("點歌結果：" + result)
+					    	loadSongs();
+	                    },
+						failure: function(errMsg) {
+							alert(errMsg);
+						}
+                	});
+				});
+			}
+			
+			function addToMyFavorite(){
+				if(isLoggedIn){
+					var data = {};
+					data.id = id;
+					data.videoId = nowVideoId;
+					console.log(data);
+					$.ajax({
+						type: 'POST',
+						url: '/mark',
+						data: data,
+                        dataType: "json",
+                        success: function(result){
+                        	console.log("儲存結果：" + result);
+                        },
+						failure: function(errMsg) {
+							alert(errMsg);
+						}
+               		});
+				}
+				else
+					alert("您必須登入後才可以做此操作！");
+			}
+
+			function loginAndloadSonglist()
+			{
+				firstLoadData = false;
+				document.getElementById("hello").innerHTML = id + "，歡迎使用！";
+			}
+
+			function loadSongs()
+			{
+				console.log("載入伺服器歌單");
+				var data = {};
+				data.msg = "00481007isHandsome!";
+				$.ajax({
+					type: 'POST',
+					url: '/boardcast',
+					data: data,
+                    dataType: "json",
+                    success: function(result){
+                    	console.log("載入結果：" + result);
+                    	if(result != "false"){
+							songsJson = result;
+                        	localStorage.setItem( "LiveList", JSON.stringify(songsJson) );
+                        	songsData = {"data":[]};
+		    				localStorage.setItem( "LiveInfo", JSON.stringify(songsData) );
+		    				for(var i in songsJson.videoId)
+		    				{
+		    					console.log("第" + (parseInt(i) + 1) + "首歌曲：" + songsJson.videoId[i]);
+		    					var YouTubeAPI = "https://www.googleapis.com/youtube/v3/videos?";
+								$.getJSON( YouTubeAPI, {
+									id: songsJson.videoId[i],
+									part: "snippet,contentDetails",
+									key: "AIzaSyAL7u3okSdLYEsmiSCioy6vcc7CPUbV2mo"
+								})
+								.done(function( data ) {
+									title = data.items["0"].snippet.title;
+									artist = data.items["0"].snippet.channelTitle;
+									duration = durationToSeconds(data.items["0"].contentDetails.duration, true);
+									var songInfo = { "videoId" : data.items["0"].id , "title" : title ,"artist" : artist, "duration" : duration };
+									songsData.data.push(songInfo);
+									localStorage.setItem("LiveInfo", JSON.stringify(songsData));
+									upadateSongInfo();
+								});
+		    				}
+                        }
+                        
+                    },
+					failure: function(errMsg) {
+						alert(errMsg);
+					}
+                });
+			}
+
+			function upadateSongInfo()
+			{
+				if ( !localStorage.getItem( "LiveList" ) ){
+					songsJson = {"videoId":[]};
+					songsData = {"data":[]};
+			    	localStorage.setItem( "LiveList", JSON.stringify(songsJson) );
+			    	localStorage.setItem( "LiveInfo", JSON.stringify(songsData) );
+				}
+				else
+				{
+					songsJson = JSON.parse(localStorage.getItem("LiveList"));
+					songsData = JSON.parse(localStorage.getItem("LiveInfo"));
+				}
+				var context = "";
+				document.getElementById("songslist").innerHTML = context;
+				for (var i in songsData.data) 
+				{
+					var isOddrow = "";
+					var songInfo = songsData.data[i];
+					//console.log(songsData.data[i]);
+					if ( i % 2 === 0 )
+						isOddrow = " class='oddrow'";
+					context += "<tr" + isOddrow + "><td>" + (parseInt(i) + 1) + "</td>"
+							+ "<td>" + songInfo.title + "</td>"
+							+ "<td>" + songInfo.artist + "</td>"
+							+ "<td><a href ='https://www.youtube.com/watch?v=" + songInfo.videoId + "' target = '_blank'>"
+							+ songInfo.videoId + "</a></td>"
+							+ "<td>" + songInfo.duration + "</td>"
+							+ "</tr>"; 
+					document.getElementById("songslist").innerHTML = context;
+				}
+			}
+
+			
+			var videoPause;
+			function onPauseClicked()
+			{
+				if(!videoPause){
+					player.pauseVideo();
+					pause.value = "繼續";
+				}
+				else{
+					player.playVideo();
+					pause.value = "暫停";
+				}
+				videoPause = !videoPause;
+			}
+
+			$(document).ready(function(){
+				$("#register").click(function(){
+					console.log("register");
+					var data = {};
+					data.id = $("#idInputField").val();
+					data.password = $("#pwInputField").val();
+					data.name = "demo";
+					//data.name = $("#nameInputField").val();
+					$.ajax({
+						type: 'POST',
+						url: '/signup',
+						data: data,
+                        dataType: "json",
+                        success: function(result){
+                        	alert(data);
+                        	loginData = { "id": data.id, "password": data.password, "name": data.name };
+					    	localStorage.setItem( "autologin", JSON.stringify(loginData) );
+					    	autoLogin();
+                        },
+						failure: function(errMsg) {
+							alert(errMsg);
+						}
+                    });
+				});
+
+
+				$("#login").click(function(){
+					console.log("enter login function");
+
+					var data = {};
+					data.id = $("#idInputField").val();
+					data.password = $("#pwInputField").val();
+					console.log(data);
+					$.ajax({
+						type: 'POST',
+						url: '/login',
+						data: data,
+                        dataType: "json",
+                        success: function(result){
+                        	console.log("登入回傳結果：" + result)
+                        	loginData = { "id": data.id, "password": data.password, "name": data.name };
+					    	localStorage.setItem( "autologin", JSON.stringify(loginData) );
+					    	id = data.id;
+					    	firstLoadData = true;
+					    	isLoggedIn = true;
+					    	loginAndloadSonglist();
+					    	if(result == false)
+					    		alert("帳號或密碼錯誤");
+					    	else
+					    		$(".login-modal-overlay").fadeOut(200);
+                        },
+						failure: function(errMsg) {
+							alert(errMsg);
+						}
+                    });
+				});
+
+				 /* $( ".login-modal-overlay" ).click(function() {
+				    $(this).fadeOut(200);
+				  });
+				  $( ".openb" ).click(function() {
+				    $(".login-modal-overlay").fadeIn(200);
+				  });
+				  $(".login-modal").click(function(event) {
+				    event.stopPropagation();
+				  });*/
+
+			});
+
+			window.addEventListener( "load", start, false );
+
+			
+			
+		</script>
+	</head>
+	<body>
+		<a href="backgroundpic.css" ></a>
+		<div id="header" class="full-width ">
+		    <div id ="title">
+		    	<h1 style ="font-weight: 900; margin: 50px;">Boardcast</h1>
+		    </div>
+		    
+			 <!--login--> 	
+		</div>
+		<div id="header-right">
+				<p id = "hello">請先登入</p>
+			    <button type="text"  class="button buttonBlue openb ">登入
+			    <div class="ripples buttonRipples"><span class="ripplesCircle"></span></div>
+			    </button>
+		</div>
+		<!--login--> 
+		<div class="login-modal-overlay">
+			<div class="login-modal">
+				<!--login context-->
+			    <h1>登入</h1>
+			    <h2>請輸入帳號密碼來登入或註冊</h2>
+			    <form method= "POST" action = "#">
+				    <div class="group">
+				    	<input id = "idInputField" type="text" required></span><span class="bar"></span>
+				    	<label>使用者名稱</label>
+				    </div>
+				    <div class="group">
+				    	<input id = "pwInputField" type="password" required></span><span class="bar"></span>
+				    	<label>密碼</label>
+				    </div>
+				    <button id = "login" type="button" class="button buttonBlue">登入
+				        <div class="ripples buttonRipples">
+				        	<span class="ripplesCircle"></span>
+				        </div>
+				    </button>
+				    <button id = "register" type="button" class="button buttonBlue">註冊
+				        <div class="ripples buttonRipples">
+				        	<span class="ripplesCircle"></span>
+				        </div>
+				    </button>
+				</form>
+    		</div>
+		</div>
+	
+		<!-- Sidebar 2-->
+		<div id="page-wrap">
+		<div id="doug-neiner-three" class="group">
+		    <div class="area"></div>
+	    	<nav class="main-menu">
+	            <ul>
+	                <li>
+	                    <a href="/index.html">
+	                        <i class="fa fa-music fa-2x"></i>
+	                        <span class="nav-text">
+	                            主頁
+	                        </span>
+	                    </a>
+	                  
+	                </li>
+	                <li class="has-subnav">
+	                    <a href="/main.html">
+	                        <i class="fa fa-list fa-2x"></i>
+	                        <span class="nav-text">
+	                           我的歌單
+	                        </span>
+	                    </a>
+	                    
+	                </li>
+	            </ul>
+
+	            <ul class="logout">
+	                <li>
+	                   <a href="#">
+	                         <i class="fa fa-power-off fa-2x"></i>
+	                        <span class="nav-text">
+	                            登出
+	                        </span>
+	                    </a>
+	                </li>  
+	            </ul>
+	    	</nav>
+
+		    <div class = "main">
+				<form action = "#">
+					<p>網址或關鍵字：<br><input id = "songtext" type = "text" style = "width: 300px;">
+					<input id = "songRequest" type = "button" value = "點歌" style = "width: 100px;"></p>
+					<p>
+					<input id = "Pause" type = "button" value = "暫停" style = "width: 100px;">
+					<input id = "Mark" type = "button" value = "儲存歌曲" onclick = "addToMyFavorite()" style = "width: 100px;">
+					</p>
+				</form>
+				<div id="ytplayer"></div>
+				<div id="videoData"></div>
+			</div>
+
+
+			<div class = "list">
+				<table>
+					<thead>
+						<tr>
+							<th>Queue</th>
+							<th>Title</th>
+							<th>Artist</th>
+							<th>VideoID</th>
+							<th>Duration</th>
+						</tr>
+					</thead>
+					<tbody id = "songslist">
+					</tbody>
+				</table>
+			</div>
+		</div>
+	</body>
+</html>
+
+<!--
+**************************************************************************
+* (C) Copyright 1992-2012 by Deitel & Associates, Inc. and               *
+* Pearson Education, Inc. All Rights Reserved.                           *
+*                                                                        *
+* DISCLAIMER: The authors and publisher of this book have used their     *
+* best efforts in preparing the book. These efforts include the          *
+* development, research, and testing of the theories and programs        *
+* to determine their effectiveness. The authors and publisher make       *
+* no warranty of any kind, expressed or implied, with regard to these    *
+* programs or to the documentation contained in these books. The authors *
+* and publisher shall not be liable in any event for incidental or       *
+* consequential damages in connection with, or arising out of, the       *
+* furnishing, performance, or use of these programs.                     *
+**************************************************************************
+-->
